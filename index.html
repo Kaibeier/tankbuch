@@ -20,28 +20,68 @@
   </header>
 
   <main>
-    <section class="card stats" aria-label="Statistik">
-      <div class="stat">
-        <span class="stat-label">Ø Verbrauch</span>
-        <span class="stat-value" id="avgConsumption">–</span>
-        <span class="stat-unit">L / 100&nbsp;km</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">Letzte Strecke</span>
-        <span class="stat-value" id="lastDistance">–</span>
-        <span class="stat-unit">km</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">Letzter Verbrauch</span>
-        <span class="stat-value" id="lastConsumption">–</span>
-        <span class="stat-unit">L / 100&nbsp;km</span>
-      </div>
-      <div class="stat">
-        <span class="stat-label">Gesamt getankt</span>
-        <span class="stat-value" id="totalLiters">–</span>
-        <span class="stat-unit">Liter</span>
+    <section class="card" aria-label="Verbrauch">
+      <h2 class="section-title">Verbrauch</h2>
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat-label">Ø Verbrauch</span>
+          <span class="stat-value" id="avgConsumption">–</span>
+          <span class="stat-unit">L / 100&nbsp;km</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Letzte Strecke</span>
+          <span class="stat-value" id="lastDistance">–</span>
+          <span class="stat-unit">km</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Letzter Verbrauch</span>
+          <span class="stat-value" id="lastConsumption">–</span>
+          <span class="stat-unit">L / 100&nbsp;km</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Gesamt getankt</span>
+          <span class="stat-value" id="totalLiters">–</span>
+          <span class="stat-unit">Liter</span>
+        </div>
       </div>
     </section>
+
+    <section class="card" aria-label="Kosten">
+      <h2 class="section-title">Kosten</h2>
+      <div class="stats-grid">
+        <div class="stat">
+          <span class="stat-label">Ø Kosten</span>
+          <span class="stat-value" id="centPerKm">–</span>
+          <span class="stat-unit">ct / km</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Diesen Monat</span>
+          <span class="stat-value" id="costThisMonth">–</span>
+          <span class="stat-unit">EUR</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Dieses Jahr</span>
+          <span class="stat-value" id="costThisYear">–</span>
+          <span class="stat-unit">EUR</span>
+        </div>
+        <div class="stat">
+          <span class="stat-label">Hochrechnung Jahr</span>
+          <span class="stat-value" id="costProjected">–</span>
+          <span class="stat-unit">EUR</span>
+        </div>
+      </div>
+    </section>
+
+    <aside class="alert" id="trendAlert" role="status" hidden>
+      <h3 class="alert-title">📈 Verbrauch steigt</h3>
+      <p class="alert-text" id="trendAlertText"></p>
+      <p class="alert-cost" id="trendAlertCost" hidden></p>
+      <p class="alert-tip">
+        Mögliche Ursachen: Reifendruck zu niedrig, Luftfilter verschmutzt,
+        Bremsen schleifen, Fahrweise oder Kurzstrecken. Eine kleine Wartung
+        kann sich finanziell schnell lohnen.
+      </p>
+    </aside>
 
     <section class="card">
       <h2>Neue Tankung</h2>

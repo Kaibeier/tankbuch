@@ -23,6 +23,15 @@
   const lastConsumptionEl = document.getElementById("lastConsumption");
   const totalLitersEl = document.getElementById("totalLiters");
 
+  const centPerKmEl = document.getElementById("centPerKm");
+  const costThisMonthEl = document.getElementById("costThisMonth");
+  const costThisYearEl = document.getElementById("costThisYear");
+  const costProjectedEl = document.getElementById("costProjected");
+
+  const trendAlertEl = document.getElementById("trendAlert");
+  const trendAlertTextEl = document.getElementById("trendAlertText");
+  const trendAlertCostEl = document.getElementById("trendAlertCost");
+
   const numberFmt = new Intl.NumberFormat("de-DE", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -35,10 +44,30 @@
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+  const centFmt = new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  const eurFmt = new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  });
+  const eurFmt2 = new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
   const priceFmt = new Intl.NumberFormat("de-DE", {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: 2,
+  });
+  const pctFmt = new Intl.NumberFormat("de-DE", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 1,
   });
   const dateFmt = new Intl.DateTimeFormat("de-DE", {
     day: "2-digit",
@@ -94,60 +123,182 @@
   // Computes consumption per entry between full tanks.
   // Standard method: distance from last full tank to this full tank,
   // divided by sum of liters at all fillups since (and including) this one,
-  // attributed to this full-tank entry.
+  // attributed to this full-tank entry. Cost is tracked per interval too,
+  // but only when every fillup in the interval has a price.
   function computeConsumption(entries) {
     const asc = sortedAsc(entries);
     const consumptionById = new Map();
+    const ordered = [];
 
     let lastFullIdx = -1;
     let litersSinceLastFull = 0;
+    let costSinceLastFull = 0;
+    let allHavePrice = true;
 
     for (let i = 0; i < asc.length; i++) {
       const e = asc[i];
       if (lastFullIdx === -1) {
-        // No baseline yet. We can't compute consumption for this fill,
-        // because we don't know how much was burned to reach this odometer.
         if (e.fullTank) {
           lastFullIdx = i;
         }
         litersSinceLastFull = 0;
+        costSinceLastFull = 0;
+        allHavePrice = true;
         continue;
       }
 
       litersSinceLastFull += e.liters;
+      if (typeof e.pricePerLiter === "number" && e.pricePerLiter > 0) {
+        costSinceLastFull += e.liters * e.pricePerLiter;
+      } else {
+        allHavePrice = false;
+      }
 
       if (e.fullTank) {
         const distance = e.odometer - asc[lastFullIdx].odometer;
         if (distance > 0 && litersSinceLastFull > 0) {
           const consumption = (litersSinceLastFull / distance) * 100;
-          consumptionById.set(e.id, {
+          const cost = allHavePrice ? costSinceLastFull : null;
+          const centPerKm =
+            cost !== null && distance > 0 ? (cost / distance) * 100 : null;
+          const data = {
+            id: e.id,
+            date: e.date,
             consumption,
             distance,
             litersUsed: litersSinceLastFull,
-          });
+            cost,
+            centPerKm,
+          };
+          consumptionById.set(e.id, data);
+          ordered.push(data);
         }
         lastFullIdx = i;
         litersSinceLastFull = 0;
+        costSinceLastFull = 0;
+        allHavePrice = true;
       }
     }
 
-    return consumptionById;
+    return { byId: consumptionById, ordered };
+  }
+
+  // Weighted recent vs. older comparison. Returns null when there is not
+  // enough history to draw a conclusion, or no meaningful upward trend.
+  function computeTrend(ordered) {
+    if (ordered.length < 6) return null;
+    const split = ordered.length >= 8 ? 4 : 3;
+    const recent = ordered.slice(-split);
+    const older = ordered.slice(0, -split);
+    if (older.length < 3) return null;
+
+    function weightedAvg(arr) {
+      let dist = 0;
+      let liters = 0;
+      for (const c of arr) {
+        dist += c.distance;
+        liters += c.litersUsed;
+      }
+      return dist > 0 ? (liters / dist) * 100 : null;
+    }
+
+    const recentAvg = weightedAvg(recent);
+    const olderAvg = weightedAvg(older);
+    if (recentAvg === null || olderAvg === null || olderAvg <= 0) return null;
+
+    const diffAbs = recentAvg - olderAvg;
+    const diffPct = (diffAbs / olderAvg) * 100;
+    if (diffPct < 5) return null; // no meaningful upward trend
+
+    return {
+      recentCount: recent.length,
+      recentAvg,
+      olderAvg,
+      diffAbs,
+      diffPct,
+      severe: diffPct >= 10,
+    };
+  }
+
+  function computeCostByPeriod(entries) {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    let totalCost = 0;
+    let costThisMonth = 0;
+    let costThisYear = 0;
+    let priceCount = 0;
+    let firstPriceDate = null;
+    let lastPriceDate = null;
+
+    for (const e of entries) {
+      if (typeof e.pricePerLiter !== "number" || e.pricePerLiter <= 0) continue;
+      const cost = e.liters * e.pricePerLiter;
+      totalCost += cost;
+      priceCount++;
+      const d = new Date(e.date + "T00:00:00");
+      if (isNaN(d)) continue;
+      if (!firstPriceDate || d < firstPriceDate) firstPriceDate = d;
+      if (!lastPriceDate || d > lastPriceDate) lastPriceDate = d;
+      if (d.getFullYear() === currentYear) {
+        costThisYear += cost;
+        if (d.getMonth() === currentMonth) {
+          costThisMonth += cost;
+        }
+      }
+    }
+
+    // Projection: based on actual usage timespan. Needs at least 30 days
+    // of price history to avoid wild guesses from a single fillup.
+    let projectedYearlyCost = null;
+    let projectionBasisDays = 0;
+    if (priceCount >= 2 && firstPriceDate && lastPriceDate) {
+      const days = Math.max(
+        1,
+        (lastPriceDate - firstPriceDate) / (1000 * 60 * 60 * 24)
+      );
+      if (days >= 30) {
+        projectedYearlyCost = (totalCost / days) * 365;
+        projectionBasisDays = Math.round(days);
+      }
+    }
+
+    return {
+      totalCost,
+      costThisMonth,
+      costThisYear,
+      projectedYearlyCost,
+      projectionBasisDays,
+      priceCount,
+    };
   }
 
   function computeStats(entries) {
     const asc = sortedAsc(entries);
-    const consumptions = computeConsumption(entries);
+    const { byId: consumptions, ordered } = computeConsumption(entries);
 
     let totalDistance = 0;
     let totalLitersBetweenFulls = 0;
-    for (const data of consumptions.values()) {
+    let totalDistanceWithCost = 0;
+    let totalCostBetweenFulls = 0;
+    for (const data of ordered) {
       totalDistance += data.distance;
       totalLitersBetweenFulls += data.litersUsed;
+      if (data.cost !== null) {
+        totalDistanceWithCost += data.distance;
+        totalCostBetweenFulls += data.cost;
+      }
     }
 
     const avg =
       totalDistance > 0
         ? (totalLitersBetweenFulls / totalDistance) * 100
+        : null;
+
+    const avgCentPerKm =
+      totalDistanceWithCost > 0
+        ? (totalCostBetweenFulls / totalDistanceWithCost) * 100
         : null;
 
     const totalLiters = asc.reduce((sum, e) => sum + e.liters, 0);
@@ -157,7 +308,6 @@
     if (asc.length >= 2) {
       lastDistance = asc[asc.length - 1].odometer - asc[asc.length - 2].odometer;
     }
-    // Most recent entry with a computed consumption value
     for (let i = asc.length - 1; i >= 0; i--) {
       const c = consumptions.get(asc[i].id);
       if (c) {
@@ -166,12 +316,50 @@
       }
     }
 
+    const cost = computeCostByPeriod(entries);
+    const trend = computeTrend(ordered);
+
+    // Estimate financial impact of trend over a year, using latest price.
+    let trendCostPerYear = null;
+    if (trend) {
+      const recentPriced = [...entries]
+        .filter((e) => typeof e.pricePerLiter === "number" && e.pricePerLiter > 0)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const recentPrice =
+        recentPriced.length > 0
+          ? recentPriced[recentPriced.length - 1].pricePerLiter
+          : null;
+      // Assume 15 000 km/year as a reasonable default if we have no annual data
+      let kmPerYear = 15000;
+      if (asc.length >= 2) {
+        const firstD = new Date(asc[0].date + "T00:00:00");
+        const lastD = new Date(asc[asc.length - 1].date + "T00:00:00");
+        const days = Math.max(
+          1,
+          (lastD - firstD) / (1000 * 60 * 60 * 24)
+        );
+        if (days >= 60) {
+          const km = asc[asc.length - 1].odometer - asc[0].odometer;
+          kmPerYear = (km / days) * 365;
+        }
+      }
+      if (recentPrice && kmPerYear > 0) {
+        // diffAbs is in L/100km. Extra liters per year:
+        const extraLitersPerYear = (trend.diffAbs / 100) * kmPerYear;
+        trendCostPerYear = extraLitersPerYear * recentPrice;
+      }
+    }
+
     return {
       avg,
+      avgCentPerKm,
       totalLiters,
       lastDistance,
       lastConsumption,
       consumptions,
+      cost,
+      trend,
+      trendCostPerYear,
     };
   }
 
@@ -188,6 +376,45 @@
         : "–";
     totalLitersEl.textContent =
       stats.totalLiters > 0 ? litersFmt.format(stats.totalLiters) : "–";
+
+    centPerKmEl.textContent =
+      stats.avgCentPerKm !== null ? centFmt.format(stats.avgCentPerKm) : "–";
+    costThisMonthEl.textContent =
+      stats.cost.costThisMonth > 0
+        ? eurFmt2.format(stats.cost.costThisMonth)
+        : "–";
+    costThisYearEl.textContent =
+      stats.cost.costThisYear > 0
+        ? eurFmt2.format(stats.cost.costThisYear)
+        : "–";
+    costProjectedEl.textContent =
+      stats.cost.projectedYearlyCost !== null
+        ? eurFmt.format(stats.cost.projectedYearlyCost)
+        : "–";
+  }
+
+  function renderTrend(stats) {
+    if (!stats.trend) {
+      trendAlertEl.hidden = true;
+      return;
+    }
+    const t = stats.trend;
+    const main =
+      `Dein Verbrauch ist in den letzten ${t.recentCount} Tankungen um ` +
+      `${pctFmt.format(t.diffPct)} % gestiegen ` +
+      `(${consumptionFmt.format(t.recentAvg)} statt vorher ${consumptionFmt.format(t.olderAvg)} L/100 km).`;
+    trendAlertTextEl.textContent = main;
+
+    if (stats.trendCostPerYear && stats.trendCostPerYear > 20) {
+      trendAlertCostEl.textContent =
+        `Geschätzte Mehrkosten pro Jahr: ca. ${eurFmt.format(stats.trendCostPerYear)}.`;
+      trendAlertCostEl.hidden = false;
+    } else {
+      trendAlertCostEl.hidden = true;
+    }
+
+    trendAlertEl.classList.toggle("severe", t.severe);
+    trendAlertEl.hidden = false;
   }
 
   function renderHistory(entries, consumptions) {
@@ -265,6 +492,7 @@
     const entries = loadEntries();
     const stats = computeStats(entries);
     renderStats(stats);
+    renderTrend(stats);
     renderHistory(entries, stats.consumptions);
   }
 
