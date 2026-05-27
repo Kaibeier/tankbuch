@@ -32,6 +32,12 @@
   const trendAlertTextEl = document.getElementById("trendAlertText");
   const trendAlertCostEl = document.getElementById("trendAlertCost");
 
+  const formTitleEl = document.getElementById("formTitle");
+  const submitBtn = document.getElementById("submitBtn");
+  const cancelEditBtn = document.getElementById("cancelEditBtn");
+
+  let editingId = null;
+
   const numberFmt = new Intl.NumberFormat("de-DE", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -511,13 +517,26 @@
         badges.appendChild(b);
       }
 
+      const actions = document.createElement("div");
+      actions.className = "entry-actions";
+
+      const editBtn = document.createElement("button");
+      editBtn.type = "button";
+      editBtn.className = "entry-edit";
+      editBtn.textContent = "Bearbeiten";
+      editBtn.addEventListener("click", () => startEdit(e.id));
+
       const delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "entry-delete";
       delBtn.textContent = "Löschen";
       delBtn.addEventListener("click", () => deleteEntry(e.id));
 
-      li.append(top, details, badges, delBtn);
+      actions.append(editBtn, delBtn);
+
+      if (editingId === e.id) li.classList.add("entry-editing");
+
+      li.append(top, details, badges, actions);
       historyList.appendChild(li);
     }
   }
@@ -540,12 +559,12 @@
     formError.textContent = "";
   }
 
-  function validateEntry(entries, newEntry) {
+  function validateEntry(entries, newEntry, excludeId = null) {
     // Odometer must be strictly increasing over the timeline.
-    const asc = sortedAsc(entries);
-    // Find neighbours by date.
+    const others = entries.filter((e) => e.id !== excludeId);
+    const asc = sortedAsc(others);
     const beforeOnDate = asc.filter(
-      (e) => e.date < newEntry.date || (e.date === newEntry.date)
+      (e) => e.date < newEntry.date || e.date === newEntry.date
     );
     const after = asc.filter((e) => e.date > newEntry.date);
 
@@ -566,6 +585,44 @@
     }
     return null;
   }
+
+  function startEdit(id) {
+    const entries = loadEntries();
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) return;
+
+    editingId = id;
+    dateInput.value = entry.date;
+    odometerInput.value = String(entry.odometer);
+    litersInput.value = String(entry.liters).replace(".", ",");
+    const cost = entryCost(entry);
+    totalCostInput.value =
+      cost !== null
+        ? cost.toFixed(2).replace(".", ",")
+        : "";
+    fullTankInput.checked = entry.fullTank;
+
+    formTitleEl.textContent = "Tankung bearbeiten";
+    submitBtn.textContent = "Änderungen speichern";
+    cancelEditBtn.hidden = false;
+    clearError();
+    render();
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    form.reset();
+    setDefaultDate();
+    fullTankInput.checked = true;
+    formTitleEl.textContent = "Neue Tankung";
+    submitBtn.textContent = "Tankung speichern";
+    cancelEditBtn.hidden = true;
+    clearError();
+    render();
+  }
+
+  cancelEditBtn.addEventListener("click", cancelEdit);
 
   form.addEventListener("submit", (ev) => {
     ev.preventDefault();
@@ -597,7 +654,7 @@
 
     const entries = loadEntries();
     const newEntry = {
-      id: uid(),
+      id: editingId || uid(),
       date,
       odometer,
       liters,
@@ -607,18 +664,32 @@
       newEntry.totalCost = totalCost;
     }
 
-    const err = validateEntry(entries, newEntry);
+    const err = validateEntry(entries, newEntry, editingId);
     if (err) {
       showError(err);
       return;
     }
 
-    entries.push(newEntry);
+    if (editingId) {
+      const idx = entries.findIndex((e) => e.id === editingId);
+      if (idx === -1) {
+        editingId = null;
+        showError("Eintrag nicht mehr gefunden.");
+        return;
+      }
+      entries[idx] = newEntry;
+    } else {
+      entries.push(newEntry);
+    }
     saveEntries(entries);
 
+    editingId = null;
     form.reset();
     setDefaultDate();
     fullTankInput.checked = true;
+    formTitleEl.textContent = "Neue Tankung";
+    submitBtn.textContent = "Tankung speichern";
+    cancelEditBtn.hidden = true;
     render();
   });
 
@@ -627,7 +698,7 @@
     const entry = entries.find((e) => e.id === id);
     if (!entry) return;
     const label = `${dateFmt.format(new Date(entry.date + "T00:00:00"))} – ${litersFmt.format(entry.liters)} L`;
-    confirmText.textContent = `Eintrag löschen?\n${label}`;
+    confirmText.textContent = `Diesen Eintrag löschen?\n${label}`;
     confirmDialog.returnValue = "";
     confirmDialog.showModal();
     confirmDialog.addEventListener(
@@ -636,7 +707,8 @@
         if (confirmDialog.returnValue === "confirm") {
           const filtered = entries.filter((e) => e.id !== id);
           saveEntries(filtered);
-          render();
+          if (editingId === id) cancelEdit();
+          else render();
         }
       },
       { once: true }

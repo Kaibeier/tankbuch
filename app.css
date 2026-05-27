@@ -254,8 +254,13 @@ button {
   cursor: pointer;
 }
 
+.form-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
 .btn-primary {
-  width: 100%;
+  flex: 1;
   padding: 0.9rem 1rem;
   background: var(--primary);
   color: white;
@@ -273,6 +278,52 @@ button {
 
 .btn-primary:active {
   transform: translateY(1px);
+}
+
+.btn-secondary {
+  padding: 0.9rem 1.1rem;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.btn-secondary:hover {
+  background: var(--border);
+}
+
+.entry-actions {
+  display: flex;
+  gap: 0.4rem;
+  justify-content: flex-end;
+  margin-top: 0.25rem;
+}
+
+.entry-edit,
+.entry-delete {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+}
+
+.entry-edit:hover {
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+.entry-delete:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.entry-editing {
+  outline: 2px solid var(--primary);
+  outline-offset: -1px;
 }
 
 .btn-link {
@@ -369,19 +420,6 @@ button {
 .badge.full {
   background: rgba(63, 185, 80, 0.15);
   color: var(--success);
-}
-
-.entry-delete {
-  align-self: flex-end;
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: 0.25rem 0.5rem;
-}
-
-.entry-delete:hover {
-  color: var(--danger);
 }
 
 .empty {

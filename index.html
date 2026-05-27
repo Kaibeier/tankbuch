@@ -84,7 +84,7 @@
     </aside>
 
     <section class="card">
-      <h2>Neue Tankung</h2>
+      <h2 id="formTitle">Neue Tankung</h2>
       <form id="entryForm" novalidate>
         <label>
           <span>Datum</span>
@@ -134,7 +134,10 @@
           Teiltankungen werden korrekt aufsummiert.
         </p>
         <p class="error" id="formError" hidden></p>
-        <button type="submit" class="btn-primary">Tankung speichern</button>
+        <div class="form-actions">
+          <button type="submit" class="btn-primary" id="submitBtn">Tankung speichern</button>
+          <button type="button" class="btn-secondary" id="cancelEditBtn" hidden>Abbrechen</button>
+        </div>
       </form>
     </section>
 
