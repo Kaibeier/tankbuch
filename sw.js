@@ -5,9 +5,9 @@ const ASSETS = [
   "./app.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./icon-192.png",
-  "./icon-512.png",
-  "./icon-maskable-512.png",
+  "./icon192.png",
+  "./icon512.png",
+  "./iconmaskable512.png",
 ];
 
 self.addEventListener("install", (event) => {
