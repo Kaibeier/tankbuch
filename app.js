@@ -6,7 +6,7 @@
   const dateInput = document.getElementById("date");
   const odometerInput = document.getElementById("odometer");
   const litersInput = document.getElementById("liters");
-  const priceInput = document.getElementById("pricePerLiter");
+  const totalCostInput = document.getElementById("totalCost");
   const fullTankInput = document.getElementById("fullTank");
   const form = document.getElementById("entryForm");
   const formError = document.getElementById("formError");
@@ -65,6 +65,12 @@
     currency: "EUR",
     minimumFractionDigits: 2,
   });
+  const pricePerLiterFmt = new Intl.NumberFormat("de-DE", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
   const pctFmt = new Intl.NumberFormat("de-DE", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
@@ -120,6 +126,31 @@
     });
   }
 
+  // Cost of a single fillup. Prefers the receipt total when stored,
+  // falls back to liters x pricePerLiter for legacy entries.
+  function entryCost(e) {
+    if (typeof e.totalCost === "number" && e.totalCost > 0) return e.totalCost;
+    if (
+      typeof e.pricePerLiter === "number" &&
+      e.pricePerLiter > 0 &&
+      e.liters > 0
+    ) {
+      return e.liters * e.pricePerLiter;
+    }
+    return null;
+  }
+
+  // Derived price per liter for display. Computes from total when available.
+  function entryPricePerLiter(e) {
+    if (typeof e.totalCost === "number" && e.totalCost > 0 && e.liters > 0) {
+      return e.totalCost / e.liters;
+    }
+    if (typeof e.pricePerLiter === "number" && e.pricePerLiter > 0) {
+      return e.pricePerLiter;
+    }
+    return null;
+  }
+
   // Computes consumption per entry between full tanks.
   // Standard method: distance from last full tank to this full tank,
   // divided by sum of liters at all fillups since (and including) this one,
@@ -148,8 +179,9 @@
       }
 
       litersSinceLastFull += e.liters;
-      if (typeof e.pricePerLiter === "number" && e.pricePerLiter > 0) {
-        costSinceLastFull += e.liters * e.pricePerLiter;
+      const entryCostValue = entryCost(e);
+      if (entryCostValue !== null) {
+        costSinceLastFull += entryCostValue;
       } else {
         allHavePrice = false;
       }
@@ -233,8 +265,8 @@
     let lastPriceDate = null;
 
     for (const e of entries) {
-      if (typeof e.pricePerLiter !== "number" || e.pricePerLiter <= 0) continue;
-      const cost = e.liters * e.pricePerLiter;
+      const cost = entryCost(e);
+      if (cost === null || cost <= 0) continue;
       totalCost += cost;
       priceCount++;
       const d = new Date(e.date + "T00:00:00");
@@ -323,11 +355,11 @@
     let trendCostPerYear = null;
     if (trend) {
       const recentPriced = [...entries]
-        .filter((e) => typeof e.pricePerLiter === "number" && e.pricePerLiter > 0)
+        .filter((e) => entryPricePerLiter(e) !== null)
         .sort((a, b) => a.date.localeCompare(b.date));
       const recentPrice =
         recentPriced.length > 0
-          ? recentPriced[recentPriced.length - 1].pricePerLiter
+          ? entryPricePerLiter(recentPriced[recentPriced.length - 1])
           : null;
       // Assume 15 000 km/year as a reasonable default if we have no annual data
       let kmPerYear = 15000;
@@ -456,11 +488,13 @@
       details.innerHTML =
         `<span>Stand: <strong>${numberFmt.format(e.odometer)} km</strong></span>` +
         `<span>Getankt: <strong>${litersFmt.format(e.liters)} L</strong></span>`;
-      if (typeof e.pricePerLiter === "number" && e.pricePerLiter > 0) {
-        const total = e.pricePerLiter * e.liters;
-        details.innerHTML +=
-          `<span>Preis: <strong>${priceFmt.format(e.pricePerLiter)}/L</strong></span>` +
-          `<span>Summe: <strong>${priceFmt.format(total)}</strong></span>`;
+      const totalCost = entryCost(e);
+      if (totalCost !== null) {
+        details.innerHTML += `<span>Summe: <strong>${eurFmt2.format(totalCost)}</strong></span>`;
+        const ppl = entryPricePerLiter(e);
+        if (ppl !== null) {
+          details.innerHTML += `<span>≈ <strong>${pricePerLiterFmt.format(ppl)}/L</strong></span>`;
+        }
       }
 
       const badges = document.createElement("div");
@@ -540,8 +574,8 @@
     const date = dateInput.value;
     const odometer = parseGermanNumber(odometerInput.value);
     const liters = parseGermanNumber(litersInput.value);
-    const priceRaw = priceInput.value.trim();
-    const pricePerLiter = priceRaw === "" ? null : parseGermanNumber(priceRaw);
+    const totalCostRaw = totalCostInput.value.trim();
+    const totalCost = totalCostRaw === "" ? null : parseGermanNumber(totalCostRaw);
     const fullTank = fullTankInput.checked;
 
     if (!date) {
@@ -556,8 +590,8 @@
       showError("Bitte eine gültige Litermenge angeben.");
       return;
     }
-    if (pricePerLiter !== null && (!Number.isFinite(pricePerLiter) || pricePerLiter < 0)) {
-      showError("Der Literpreis ist ungültig.");
+    if (totalCost !== null && (!Number.isFinite(totalCost) || totalCost < 0)) {
+      showError("Die Summe ist ungültig.");
       return;
     }
 
@@ -569,8 +603,8 @@
       liters,
       fullTank,
     };
-    if (pricePerLiter !== null) {
-      newEntry.pricePerLiter = pricePerLiter;
+    if (totalCost !== null && totalCost > 0) {
+      newEntry.totalCost = totalCost;
     }
 
     const err = validateEntry(entries, newEntry);
